@@ -1,33 +1,4 @@
 services:
-  - type: web
-    name: blabhear-frontend
-    repo: https://github.com/KnowYourLines/blabhear-frontend.git
-    env: static
-    buildCommand: yarn build
-    staticPublishPath: dist
-    domains:
-      - blabhear.com
-    envVars:
-      - key: VUE_APP_BACKEND_URL
-        fromService:
-          name: blabhear-backend
-          type: web
-          envVarKey: RENDER_EXTERNAL_URL
-      - key: VUE_APP_FIREBASE_API_KEY
-        sync: false
-      - key: VUE_APP_FIREBASE_AUTH_DOMAIN
-        sync: false
-      - key: VUE_APP_FIREBASE_PROJECT_ID
-        sync: false
-      - key: VUE_APP_FIREBASE_STORAGE_BUCKET
-        sync: false
-      - key: VUE_APP_FIREBASE_MESSAGING_SENDER_ID
-        sync: false
-      - key: VUE_APP_FIREBASE_APP_ID
-        sync: false
-      - key: VUE_APP_FIREBASE_MEASUREMENT_ID
-        sync: false
-
   - type: redis
     name: blabhear-redis
     region: ohio
@@ -50,14 +21,8 @@ services:
         value: 3.10.8
       - key: DEBUG
         value: False
-      - key: LOCAL
-        value: False
       - key: SECRET_KEY
         generateValue: true
-      - key: ALLOWED_HOSTS
-        value: blabhear.com
-      - key: CORS_ALLOWED_ORIGINS
-        value: https://blabhear.com
       - key: DATABASE_URL
         fromDatabase:
           name: blabhear-db
@@ -78,8 +43,6 @@ services:
       - key: FIREBASE_CLIENT_ID
         sync: false
       - key: FIREBASE_CLIENT_CERT_URL
-        sync: false
-      - key: GCP_UPLOAD_BUCKET
         sync: false
 
 databases:

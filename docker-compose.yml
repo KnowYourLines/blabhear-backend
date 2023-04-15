@@ -25,7 +25,6 @@ services:
       - REDIS_URL=redis://redis:6379/
       - SECRET_KEY=!!f1r=78mf)an7i&t8yqy*#e%*wwcx59am^8(xor#11uh^98kt
       - DEBUG=True
-      - LOCAL=True
       - ALLOWED_HOSTS=localhost
       - FIREBASE_PROJECT_ID=
       - FIREBASE_PRIVATE_KEY_ID=
@@ -33,4 +32,3 @@ services:
       - FIREBASE_CLIENT_EMAIL=
       - FIREBASE_CLIENT_ID=
       - FIREBASE_CLIENT_CERT_URL=
-      - GCP_UPLOAD_BUCKET=

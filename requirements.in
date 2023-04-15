@@ -1,5 +1,4 @@
 Django<4
-django-cors-headers
 channels<4
 channels_redis<4
 psycopg2>=2.8

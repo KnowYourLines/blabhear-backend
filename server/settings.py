@@ -27,12 +27,10 @@ SECRET_KEY = os.environ.get("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = bool(os.environ.get("DEBUG") == "True")
 
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS").split(",")
 
 RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
 
-if RENDER_EXTERNAL_HOSTNAME:
-    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", [RENDER_EXTERNAL_HOSTNAME]).split(",")
 
 
 # Application definition
@@ -45,12 +43,10 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "channels",
-    "corsheaders",
     "blabhear",
 ]
 
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -132,8 +128,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_USER_MODEL = "blabhear.User"
 
-LOCAL = bool(os.environ.get("LOCAL") == "True")
-
 ASGI_APPLICATION = "server.asgi.application"
 
 CHANNEL_LAYERS = {
@@ -144,11 +138,3 @@ CHANNEL_LAYERS = {
         },
     },
 }
-CORS_ALLOW_ALL_ORIGINS = True
-
-if not LOCAL:
-    CORS_ALLOW_ALL_ORIGINS = False
-    CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS").split(",")
-    RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
-    if RENDER_EXTERNAL_URL:
-        CORS_ALLOWED_ORIGINS.append(RENDER_EXTERNAL_URL)
