@@ -30,7 +30,8 @@ default_app = firebase_admin.initialize_app(cred)
 
 
 @database_sync_to_async
-def get_user(token):
+def get_user(query_string):
+    token = query_string["token"][0]
     try:
         decoded_token = auth.verify_id_token(token)
     except auth.RevokedIdTokenError as exc:
@@ -44,13 +45,22 @@ def get_user(token):
         uid = decoded_token.get("uid")
     except Exception:
         raise FirebaseAuthError("Missing uid.")
-
-    user, created = User.objects.update_or_create(
-        username=uid,
-        defaults={
-            "phone_number": decoded_token.get("phone_number") or "",
-        },
-    )
+    country = query_string.get("country")
+    if country:
+        user, created = User.objects.update_or_create(
+            username=uid,
+            defaults={
+                "phone_number": decoded_token.get("phone_number"),
+                "alpha2_country_code": country[0],
+            },
+        )
+    else:
+        user, created = User.objects.update_or_create(
+            username=uid,
+            defaults={
+                "phone_number": decoded_token.get("phone_number"),
+            },
+        )
     return user
 
 
@@ -59,9 +69,7 @@ class TokenAuthMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        scope["user"] = await get_user(
-            parse_qs(scope["query_string"].decode())["token"][0]
-        )
+        scope["user"] = await get_user(parse_qs(scope["query_string"].decode()))
         return await self.app(scope, receive, send)
 
 
