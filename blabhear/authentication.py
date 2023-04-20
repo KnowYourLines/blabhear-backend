@@ -47,18 +47,20 @@ def get_user(query_string):
         raise FirebaseAuthError("Missing uid.")
     country = query_string.get("country")
     if country:
-        user, created = User.objects.update_or_create(
+        user, created = User.objects.get_or_create(
             username=uid,
             defaults={
                 "phone_number": decoded_token.get("phone_number"),
                 "alpha2_country_code": country[0],
+                "display_name": decoded_token.get("phone_number"),
             },
         )
     else:
-        user, created = User.objects.update_or_create(
+        user, created = User.objects.get_or_create(
             username=uid,
             defaults={
                 "phone_number": decoded_token.get("phone_number"),
+                "display_name": decoded_token.get("phone_number"),
             },
         )
     return user
