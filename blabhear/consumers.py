@@ -1,8 +1,11 @@
 import asyncio
 import logging
 
+import phonenumbers
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+
+from blabhear.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +28,45 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
         if self.username == self.user.username:
             if content.get("command") == "update_display_name":
                 asyncio.create_task(self.update_display_name(content))
+            if content.get("command") == "fetch_registered_contacts":
+                asyncio.create_task(self.fetch_registered_contacts(content))
+
+    async def fetch_registered_contacts(self, input_payload):
+        phone_contacts = input_payload["phone_contacts"]
+        valid_phone_numbers = []
+        for contact in phone_contacts:
+            if contact["phoneNumbers"]:
+                phone_number = next(
+                    (
+                        number["number"]
+                        for number in contact["phoneNumbers"]
+                        if number["label"] == "mobile"
+                    ),
+                    contact["phoneNumbers"][0]["number"],
+                )
+                phone_number = phonenumbers.parse(
+                    phone_number, self.user.alpha2_country_code
+                )
+                if phonenumbers.is_valid_number(phone_number):
+                    phone_number = phonenumbers.format_number(
+                        phone_number, phonenumbers.PhoneNumberFormat.E164
+                    )
+                    valid_phone_numbers.append(phone_number)
+        registered_contacts = await database_sync_to_async(
+            self.find_users_by_phone_numbers
+        )(valid_phone_numbers)
+        await self.channel_layer.send(
+            self.channel_name,
+            {"type": "registered_contacts", "registered_contacts": registered_contacts},
+        )
+
+    def find_users_by_phone_numbers(self, phone_numbers):
+        users = (
+            User.objects.filter(phone_number__in=phone_numbers)
+            .values("phone_number", "display_name")
+            .order_by("display_name")
+        )
+        return list(users)
 
     async def fetch_display_name(self):
         display_name = self.user.display_name
@@ -51,5 +93,9 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
             await self.fetch_display_name()
 
     async def display_name(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def registered_contacts(self, event):
         # Send message to WebSocket
         await self.send_json(event)

@@ -41,6 +41,7 @@ hyperlink==21.0.0
 idna==3.4
 incremental==22.10.0
 msgpack==1.0.5
+phonenumbers==8.13.10
 proto-plus==1.22.2
 protobuf==4.22.1
 psycopg2==2.9.5
