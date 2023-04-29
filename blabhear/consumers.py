@@ -63,6 +63,7 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
     def find_users_by_phone_numbers(self, phone_numbers):
         users = (
             User.objects.filter(phone_number__in=phone_numbers)
+            .exclude(phone_number=self.user.phone_number)
             .values("phone_number", "display_name")
             .order_by("display_name")
         )
