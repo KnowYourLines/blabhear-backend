@@ -30,7 +30,12 @@ DEBUG = bool(os.environ.get("DEBUG") == "True")
 
 RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
 
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", [RENDER_EXTERNAL_HOSTNAME]).split(",")
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS = [RENDER_EXTERNAL_HOSTNAME]
+else:
+    ALLOWED_HOSTS = os.environ.get(
+        "ALLOWED_HOSTS",
+    ).split(",")
 
 
 # Application definition
