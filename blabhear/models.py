@@ -9,3 +9,9 @@ class User(AbstractUser):
     phone_number = models.CharField(max_length=150, unique=True)
     alpha2_country_code = models.CharField(max_length=2)
     display_name = models.CharField(max_length=150)
+
+
+class Room(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    members = models.ManyToManyField(User)
+    display_name = models.CharField(max_length=150, blank=True)
