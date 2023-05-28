@@ -4,3 +4,7 @@ class InvalidFirebaseAuthToken(Exception):
 
 class FirebaseAuthError(Exception):
     pass
+
+
+class UserNotAllowedError(Exception):
+    pass

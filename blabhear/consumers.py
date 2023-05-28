@@ -5,7 +5,8 @@ import phonenumbers
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
-from blabhear.models import User
+from blabhear.exceptions import UserNotAllowedError
+from blabhear.models import User, Room
 
 logger = logging.getLogger(__name__)
 
@@ -100,3 +101,43 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
     async def registered_contacts(self, event):
         # Send message to WebSocket
         await self.send_json(event)
+
+
+class RoomConsumer(AsyncJsonWebsocketConsumer):
+    def get_room(self, room_id):
+        room, created = Room.objects.get_or_create(id=room_id)
+        if created:
+            room.members.add(self.user)
+            return room
+        else:
+            user_allowed = self.user_allowed()
+            if user_allowed:
+                return room
+            else:
+                raise UserNotAllowedError("User is not a member of the room")
+
+    def user_allowed(self):
+        room = Room.objects.filter(id=self.room_id)
+        if room.exists():
+            room = room.first()
+            return self.user in room.members.all()
+        else:
+            return False
+
+    async def connect(self):
+        await self.accept()
+        self.user = self.scope["user"]
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(str(self.room_id), self.channel_name)
+
+    async def initialize_room(self):
+        await self.channel_layer.group_add(self.room_id, self.channel_name)
+        room = await database_sync_to_async(self.get_room)(self.room_id)
+
+    async def receive_json(self, content, **kwargs):
+        if content.get("command") == "connect":
+            self.room_id = content.get("room")
+            await self.initialize_room()
+        if content.get("command") == "disconnect":
+            await self.channel_layer.group_discard(str(self.room_id), self.channel_name)
