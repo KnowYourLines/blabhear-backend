@@ -114,18 +114,21 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         self.user = None
         self.room_id = None
 
-    def get_room(self):
-        room, created = Room.objects.get_or_create(id=self.room_id)
-        self.room_id = str(room.id)
-        if created:
+    def get_room(self, phone_numbers):
+        members = User.objects.filter(phone_number__in=phone_numbers)
+        room_with_members = Room.objects.filter(members__in=members)
+        if room_with_members.exists():
+            room = room_with_members.first()
+        else:
+            room = Room.objects.create()
             room.members.add(self.user)
+            room.members.add(*members)
+        self.room_id = str(room.id)
+        user_allowed = self.user_allowed()
+        if user_allowed:
             return room
         else:
-            user_allowed = self.user_allowed()
-            if user_allowed:
-                return room
-            else:
-                raise UserNotAllowedError("User is not a member of the room")
+            raise UserNotAllowedError("User is not a member of the room")
 
     def user_allowed(self):
         room = Room.objects.filter(id=self.room_id)
@@ -144,14 +147,14 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         if self.room_id:
             await self.channel_layer.group_discard(self.room_id, self.channel_name)
 
-    async def initialize_room(self):
-        room = await database_sync_to_async(self.get_room)()
+    async def initialize_room(self, members):
+        await database_sync_to_async(self.get_room)(members)
         await self.channel_layer.group_add(self.room_id, self.channel_name)
 
     async def receive_json(self, content, **kwargs):
         if content.get("command") == "connect":
-            self.room_id = content.get("room")
-            await self.initialize_room()
+            phone_numbers = content.get("phone_numbers", [])
+            await self.initialize_room(phone_numbers)
         if content.get("command") == "disconnect":
             if self.room_id:
                 await self.channel_layer.group_discard(self.room_id, self.channel_name)
