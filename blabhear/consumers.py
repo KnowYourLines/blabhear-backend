@@ -149,8 +149,9 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     def change_room_name(self, new_name):
         room = Room.objects.get(id=self.room_id)
-        room.display_name = new_name
-        room.save()
+        if len(room.members.all()) > 2:
+            room.display_name = new_name
+            room.save()
         return room.display_name
 
     async def connect(self):
