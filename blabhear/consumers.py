@@ -120,13 +120,18 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         if room_with_members.exists():
             room = room_with_members.first()
         else:
-            room = Room.objects.create()
+            if len(members) == 1:
+                display_name = members.first().display_name
+            else:
+                display_name = "Group name goes here"
+            room = Room.objects.create(display_name=display_name)
             room.members.add(self.user)
             room.members.add(*members)
         self.room_id = str(room.id)
         user_allowed = self.user_allowed()
         if user_allowed:
-            return room
+            members = list(room.members.all().values("display_name"))
+            return room, members
         else:
             raise UserNotAllowedError("User is not a member of the room")
 
@@ -148,7 +153,15 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_discard(self.room_id, self.channel_name)
 
     async def initialize_room(self, members):
-        await database_sync_to_async(self.get_room)(members)
+        room, members = await database_sync_to_async(self.get_room)(members)
+        await self.channel_layer.send(
+            self.channel_name,
+            {"type": "room_name", "room_name": room.display_name},
+        )
+        await self.channel_layer.send(
+            self.channel_name,
+            {"type": "room_members", "room_members": members},
+        )
         await self.channel_layer.group_add(self.room_id, self.channel_name)
 
     async def receive_json(self, content, **kwargs):
@@ -158,3 +171,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         if content.get("command") == "disconnect":
             if self.room_id:
                 await self.channel_layer.group_discard(self.room_id, self.channel_name)
+
+    async def room_name(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def room_members(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
