@@ -147,6 +147,12 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         else:
             return False
 
+    def change_room_name(self, new_name):
+        room = Room.objects.get(id=self.room_id)
+        room.display_name = new_name
+        room.save()
+        return room.display_name
+
     async def connect(self):
         await self.accept()
         self.user = self.scope["user"]
@@ -166,12 +172,30 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     async def receive_json(self, content, **kwargs):
         if content.get("command") == "connect":
-            phone_numbers = content.get("phone_numbers", [])
-            await self.initialize_room(phone_numbers)
-        if content.get("command") == "disconnect":
             if self.room_id:
                 await self.channel_layer.group_discard(self.room_id, self.channel_name)
+            phone_numbers = content.get("phone_numbers", [])
+            await self.initialize_room(phone_numbers)
+        user_allowed = await database_sync_to_async(self.user_allowed)()
+        if user_allowed:
+            if content.get("command") == "update_room_name":
+                asyncio.create_task(self.update_room_name(content))
+
+    async def update_room_name(self, input_payload):
+        new_room_name = input_payload["name"].strip()
+        if new_room_name:
+            room_name = await database_sync_to_async(self.change_room_name)(
+                new_room_name
+            )
+            await self.channel_layer.group_send(
+                self.room_id,
+                {"type": "updated_room_name", "room_name": room_name},
+            )
 
     async def new_room(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def updated_room_name(self, event):
         # Send message to WebSocket
         await self.send_json(event)
