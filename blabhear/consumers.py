@@ -1,12 +1,13 @@
 import asyncio
 import logging
+from operator import itemgetter
 
 import phonenumbers
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 from blabhear.exceptions import UserNotAllowedError
-from blabhear.models import User, Room
+from blabhear.models import User, Room, UserRoomNotification
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_add(self.username, self.channel_name)
             await self.accept()
             await self.fetch_display_name()
+            await self.fetch_notifications()
         else:
             await self.close()
 
@@ -77,8 +79,8 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
 
     async def fetch_display_name(self):
         display_name = self.user.display_name
-        await self.channel_layer.send(
-            self.channel_name,
+        await self.channel_layer.group_send(
+            self.username,
             {"type": "display_name", "display_name": display_name},
         )
 
@@ -87,17 +89,47 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
         self.user.save()
         return new_name
 
+    def get_notifications(self):
+        notifications = list(
+            self.user.userroomnotification_set.values(
+                "room",
+                "room__display_name",
+                "timestamp",
+            ).order_by("room", "-timestamp")
+        )
+        notifications.sort(key=itemgetter("timestamp"), reverse=True)
+        for notification in notifications:
+            notification["room"] = str(notification["room"])
+            notification["timestamp"] = notification["timestamp"].strftime(
+                "%d-%m-%Y %H:%M:%S"
+            )
+        return notifications
+
     async def update_display_name(self, input_payload):
         if len(input_payload["name"].strip()) > 0:
             display_name = await database_sync_to_async(self.change_display_name)(
                 input_payload["name"].strip()
             )
-            await self.channel_layer.send(
-                self.channel_name,
+            await self.channel_layer.group_send(
+                self.username,
                 {"type": "display_name", "display_name": display_name},
             )
         else:
             await self.fetch_display_name()
+
+    async def fetch_notifications(self):
+        notifications = await database_sync_to_async(self.get_notifications)()
+        await self.channel_layer.group_send(
+            self.username,
+            {
+                "type": "notifications",
+                "notifications": notifications,
+            },
+        )
+
+    async def notifications(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
 
     async def display_name(self, event):
         # Send message to WebSocket
@@ -107,6 +139,10 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
         # Send message to WebSocket
         await self.send_json(event)
 
+    async def refresh_notifications(self, event):
+        # Send message to WebSocket
+        await self.fetch_notifications()
+
 
 class RoomConsumer(AsyncJsonWebsocketConsumer):
     def __init__(self, *args, **kwargs):
@@ -115,14 +151,27 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         self.room_id = None
 
     def get_room(self, phone_numbers):
-        members = User.objects.filter(phone_number__in=phone_numbers)
-        room_with_members = Room.objects.filter(members__in=members)
-        if room_with_members.exists():
-            room = room_with_members.first()
-        else:
+        usernames_to_notify = []
+        phone_numbers.append(self.user.phone_number)
+        members_to_be_added = User.objects.filter(phone_number__in=phone_numbers)
+        rooms_with_members = Room.objects.filter(
+            members__in=members_to_be_added
+        ).distinct()
+        room = None
+        for room_with_members in rooms_with_members:
+            existing_room_members = set(room_with_members.members.all())
+            if existing_room_members == set(members_to_be_added):
+                room = room_with_members
+                break
+        if not room:
             room = Room.objects.create(display_name="Change the group name")
-            room.members.add(self.user)
-            room.members.add(*members)
+            room.members.add(*members_to_be_added)
+            for user in room.members.all():
+                UserRoomNotification.objects.create(user=user, room=room)
+            usernames_to_notify = [
+                notification.user.username
+                for notification in room.userroomnotification_set.all()
+            ]
         self.room_id = str(room.id)
         user_allowed = self.user_allowed()
         if user_allowed:
@@ -135,7 +184,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 )
             else:
                 display_name = room.display_name
-            return room, members, display_name
+            return room, members, display_name, usernames_to_notify
         else:
             raise UserNotAllowedError("User is not a member of the room")
 
@@ -164,12 +213,23 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_discard(self.room_id, self.channel_name)
 
     async def initialize_room(self, members):
-        room, members, room_name = await database_sync_to_async(self.get_room)(members)
+        (
+            room,
+            members,
+            room_name,
+            usernames_to_notify,
+        ) = await database_sync_to_async(
+            self.get_room
+        )(members)
         await self.channel_layer.send(
             self.channel_name,
             {"type": "new_room", "room_name": room_name, "room_members": members},
         )
         await self.channel_layer.group_add(self.room_id, self.channel_name)
+        for username in usernames_to_notify:
+            await self.channel_layer.group_send(
+                username, {"type": "refresh_notifications"}
+            )
 
     async def receive_json(self, content, **kwargs):
         if content.get("command") == "connect":
