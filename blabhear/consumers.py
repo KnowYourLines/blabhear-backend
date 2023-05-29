@@ -160,11 +160,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         room, members, room_name = await database_sync_to_async(self.get_room)(members)
         await self.channel_layer.send(
             self.channel_name,
-            {"type": "room_name", "room_name": room_name},
-        )
-        await self.channel_layer.send(
-            self.channel_name,
-            {"type": "room_members", "room_members": members},
+            {"type": "new_room", "room_name": room_name, "room_members": members},
         )
         await self.channel_layer.group_add(self.room_id, self.channel_name)
 
@@ -176,10 +172,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             if self.room_id:
                 await self.channel_layer.group_discard(self.room_id, self.channel_name)
 
-    async def room_name(self, event):
-        # Send message to WebSocket
-        await self.send_json(event)
-
-    async def room_members(self, event):
+    async def new_room(self, event):
         # Send message to WebSocket
         await self.send_json(event)
