@@ -114,8 +114,9 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         self.user = None
         self.room_id = None
 
-    def get_room(self, room_id):
-        room, created = Room.objects.get_or_create(id=room_id)
+    def get_room(self):
+        room, created = Room.objects.get_or_create(id=self.room_id)
+        self.room_id = str(room.id)
         if created:
             room.members.add(self.user)
             return room
@@ -141,11 +142,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     async def disconnect(self, close_code):
         if self.room_id:
-            await self.channel_layer.group_discard(str(self.room_id), self.channel_name)
+            await self.channel_layer.group_discard(self.room_id, self.channel_name)
 
     async def initialize_room(self):
+        room = await database_sync_to_async(self.get_room)()
         await self.channel_layer.group_add(self.room_id, self.channel_name)
-        room = await database_sync_to_async(self.get_room)(self.room_id)
 
     async def receive_json(self, content, **kwargs):
         if content.get("command") == "connect":
@@ -153,6 +154,4 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.initialize_room()
         if content.get("command") == "disconnect":
             if self.room_id:
-                await self.channel_layer.group_discard(
-                    str(self.room_id), self.channel_name
-                )
+                await self.channel_layer.group_discard(self.room_id, self.channel_name)
