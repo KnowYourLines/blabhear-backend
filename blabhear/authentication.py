@@ -56,12 +56,8 @@ def get_user(query_string):
             },
         )
     else:
-        user, created = User.objects.get_or_create(
+        user = User.objects.get(
             username=uid,
-            defaults={
-                "phone_number": decoded_token.get("phone_number"),
-                "display_name": decoded_token.get("phone_number"),
-            },
         )
     return user
 
