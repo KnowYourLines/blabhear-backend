@@ -120,18 +120,22 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         if room_with_members.exists():
             room = room_with_members.first()
         else:
-            if len(members) == 1:
-                display_name = members.first().display_name
-            else:
-                display_name = "Group name goes here"
-            room = Room.objects.create(display_name=display_name)
+            room = Room.objects.create(display_name="Change the group name")
             room.members.add(self.user)
             room.members.add(*members)
         self.room_id = str(room.id)
         user_allowed = self.user_allowed()
         if user_allowed:
             members = list(room.members.all().values("display_name"))
-            return room, members
+            if len(members) == 2:
+                display_name = (
+                    room.members.exclude(phone_number=self.user.phone_number)
+                    .first()
+                    .display_name
+                )
+            else:
+                display_name = room.display_name
+            return room, members, display_name
         else:
             raise UserNotAllowedError("User is not a member of the room")
 
@@ -153,10 +157,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_discard(self.room_id, self.channel_name)
 
     async def initialize_room(self, members):
-        room, members = await database_sync_to_async(self.get_room)(members)
+        room, members, room_name = await database_sync_to_async(self.get_room)(members)
         await self.channel_layer.send(
             self.channel_name,
-            {"type": "room_name", "room_name": room.display_name},
+            {"type": "room_name", "room_name": room_name},
         )
         await self.channel_layer.send(
             self.channel_name,
