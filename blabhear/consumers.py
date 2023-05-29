@@ -12,6 +12,11 @@ logger = logging.getLogger(__name__)
 
 
 class UserConsumer(AsyncJsonWebsocketConsumer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(args, kwargs)
+        self.user = None
+        self.username = None
+
     async def connect(self):
         self.username = str(self.scope["url_route"]["kwargs"]["user_id"])
         self.user = self.scope["user"]
@@ -85,7 +90,7 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
     async def update_display_name(self, input_payload):
         if len(input_payload["name"].strip()) > 0:
             display_name = await database_sync_to_async(self.change_display_name)(
-                input_payload["name"]
+                input_payload["name"].strip()
             )
             await self.channel_layer.send(
                 self.channel_name,
