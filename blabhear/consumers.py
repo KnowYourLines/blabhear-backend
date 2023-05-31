@@ -5,6 +5,7 @@ from operator import itemgetter
 import phonenumbers
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from django.contrib.postgres.aggregates import ArrayAgg
 
 from blabhear.exceptions import UserNotAllowedError
 from blabhear.models import User, Room, UserRoomNotification
@@ -91,11 +92,16 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
 
     def get_notifications(self):
         notifications = list(
-            self.user.userroomnotification_set.values(
+            self.user.userroomnotification_set.annotate(
+                member_phone_numbers=ArrayAgg("room__members__phone_number")
+            )
+            .values(
+                "member_phone_numbers",
                 "room",
                 "room__display_name",
                 "timestamp",
-            ).order_by("room", "-timestamp")
+            )
+            .order_by("-timestamp")
         )
         notifications.sort(key=itemgetter("timestamp"), reverse=True)
         for notification in notifications:
