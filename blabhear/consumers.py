@@ -197,11 +197,16 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             return False
 
     def change_room_name(self, new_name):
+        usernames_to_notify = []
         room = Room.objects.get(id=self.room_id)
         if len(room.members.all()) > 2:
             room.display_name = new_name
             room.save()
-        return room.display_name
+            usernames_to_notify = [
+                notification.user.username
+                for notification in room.userroomnotification_set.all()
+            ]
+        return room.display_name, usernames_to_notify
 
     async def connect(self):
         await self.accept()
@@ -245,13 +250,17 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     async def update_room_name(self, input_payload):
         new_room_name = input_payload["name"].strip()
         if new_room_name:
-            room_name = await database_sync_to_async(self.change_room_name)(
-                new_room_name
-            )
+            room_name, usernames_to_notify = await database_sync_to_async(
+                self.change_room_name
+            )(new_room_name)
             await self.channel_layer.group_send(
                 self.room_id,
                 {"type": "updated_room_name", "room_name": room_name},
             )
+            for username in usernames_to_notify:
+                await self.channel_layer.group_send(
+                    username, {"type": "refresh_notifications"}
+                )
 
     async def new_room(self, event):
         # Send message to WebSocket
