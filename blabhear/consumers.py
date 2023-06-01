@@ -109,6 +109,15 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
             notification["timestamp"] = notification["timestamp"].strftime(
                 "%d-%m-%Y %H:%M:%S"
             )
+            if len(notification["member_phone_numbers"]) == 2:
+                receiver_phone_number = next(
+                    phone_number
+                    for phone_number in notification["member_phone_numbers"]
+                    if phone_number != self.user.phone_number
+                )
+                notification["room__display_name"] = User.objects.get(
+                    phone_number=receiver_phone_number
+                ).display_name
         return notifications
 
     async def update_display_name(self, input_payload):
