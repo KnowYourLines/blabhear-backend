@@ -8,7 +8,8 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.postgres.aggregates import ArrayAgg
 
 from blabhear.exceptions import UserNotAllowedError
-from blabhear.models import User, Room, UserRoomNotification
+from blabhear.models import User, Room, UserRoomNotification, Message
+from blabhear.storage import generate_upload_signed_url_v4
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +224,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             ]
         return room.display_name, usernames_to_notify
 
+    def get_message(self):
+        room = Room.objects.get(id=self.room_id)
+        message, created = Message.objects.get_or_create(room=room, creator=self.user)
+        return message
+
     async def connect(self):
         await self.accept()
         self.user = self.scope["user"]
@@ -261,6 +267,21 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         if user_allowed:
             if content.get("command") == "update_room_name":
                 asyncio.create_task(self.update_room_name(content))
+            if content.get("command") == "fetch_upload_url":
+                asyncio.create_task(self.fetch_upload_url())
+
+    async def fetch_upload_url(self):
+        message = await database_sync_to_async(self.get_message)()
+        filename = str(message.id)
+        url = generate_upload_signed_url_v4(filename)
+        await self.channel_layer.send(
+            self.channel_name,
+            {
+                "type": "upload_url",
+                "upload_url": url,
+                "refresh_upload_destination_in": 604790000,
+            },
+        )
 
     async def update_room_name(self, input_payload):
         new_room_name = input_payload["name"].strip()
@@ -282,5 +303,9 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event)
 
     async def updated_room_name(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def upload_url(self, event):
         # Send message to WebSocket
         await self.send_json(event)

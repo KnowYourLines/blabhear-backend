@@ -29,3 +29,18 @@ class UserRoomNotification(models.Model):
                 fields=["room", "user"], name="unique_notification"
             ),
         ]
+
+
+class Message(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    creator = models.ForeignKey(User, on_delete=models.CASCADE)
+    room = models.ForeignKey(Room, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["creator", "room"], name="unique_creator_room_message"
+            ),
+        ]
