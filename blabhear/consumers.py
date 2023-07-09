@@ -256,6 +256,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_send(
                 username, {"type": "refresh_notifications"}
             )
+        await self.fetch_upload_url()
 
     async def receive_json(self, content, **kwargs):
         if content.get("command") == "connect":
