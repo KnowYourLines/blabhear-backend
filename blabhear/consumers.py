@@ -339,6 +339,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 username, {"type": "refresh_notifications"}
             )
         await self.fetch_upload_url()
+        await self.fetch_message_notifications()
 
     async def receive_json(self, content, **kwargs):
         if content.get("command") == "connect":
@@ -354,6 +355,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.fetch_upload_url())
             if content.get("command") == "send_message":
                 asyncio.create_task(self.send_message())
+            if content.get("command") == "fetch_message_notifications":
+                asyncio.create_task(self.fetch_message_notifications())
 
     async def send_message(self):
         await database_sync_to_async(self.update_notifications_for_new_message)()
