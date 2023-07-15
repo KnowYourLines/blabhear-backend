@@ -17,20 +17,6 @@ class Room(models.Model):
     display_name = models.CharField(max_length=150, blank=True)
 
 
-class UserRoomNotification(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    room = models.ForeignKey(Room, on_delete=models.CASCADE)
-    timestamp = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["room", "user"], name="unique_notification"
-            ),
-        ]
-
-
 class Message(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     creator = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -42,5 +28,39 @@ class Message(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["creator", "room"], name="unique_creator_room_message"
+            ),
+        ]
+
+
+class UserRoomNotification(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    room = models.ForeignKey(Room, on_delete=models.CASCADE)
+    timestamp = models.DateTimeField(auto_now=True)
+    read = models.BooleanField(default=False)
+    message = models.ForeignKey(
+        Message, blank=True, null=True, on_delete=models.SET_NULL
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["room", "user"], name="unique_notification"
+            ),
+        ]
+
+
+class MessageNotification(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    receiver = models.ForeignKey(User, on_delete=models.CASCADE)
+    room = models.ForeignKey(Room, on_delete=models.CASCADE)
+    timestamp = models.DateTimeField(auto_now=True)
+    read = models.BooleanField(default=False)
+    message = models.ForeignKey(Message, on_delete=models.CASCADE)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["room", "receiver", "message"], name="unique_msg_notification"
             ),
         ]

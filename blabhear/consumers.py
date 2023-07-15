@@ -8,8 +8,17 @@ from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.postgres.aggregates import ArrayAgg
 
 from blabhear.exceptions import UserNotAllowedError
-from blabhear.models import User, Room, UserRoomNotification, Message
-from blabhear.storage import generate_upload_signed_url_v4
+from blabhear.models import (
+    User,
+    Room,
+    Message,
+    UserRoomNotification,
+    MessageNotification,
+)
+from blabhear.storage import (
+    generate_upload_signed_url_v4,
+    generate_download_signed_url_v4,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +110,8 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
                 "room",
                 "room__display_name",
                 "timestamp",
+                "read",
+                "message__creator__display_name",
             )
             .order_by("-timestamp")
         )
@@ -166,6 +177,66 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         self.user = None
         self.room_id = None
 
+    def get_message_notifications(self):
+        room = Room.objects.get(id=self.room_id)
+        room_member_pks = room.members.all().values_list("pk", flat=True)
+        notifications = list(
+            self.user.messagenotification_set.filter(
+                room__id=self.room_id, message__creator__id__in=room_member_pks
+            )
+            .values(
+                "id",
+                "message__id",
+                "read",
+                "timestamp",
+                "message__creator__display_name",
+            )
+            .order_by("-timestamp")
+        )
+        notifications.sort(key=itemgetter("timestamp"), reverse=True)
+        notifications.sort(key=itemgetter("read"))
+        for notification in notifications:
+            notification["id"] = str(notification["id"])
+            notification["message__id"] = str(notification["message__id"])
+            notification["readable_timestamp"] = notification["timestamp"].strftime(
+                "%d-%m-%Y %H:%M:%S"
+            )
+            notification["timestamp"] = str(notification["timestamp"])
+            notification["url"] = generate_download_signed_url_v4(
+                notification["message__id"]
+            )
+        return notifications
+
+    def read_unread_room_notification(self):
+        room = Room.objects.get(id=self.room_id)
+        room_notification = UserRoomNotification.objects.get(user=self.user, room=room)
+        if not room_notification.read:
+            room_notification.read = True
+            room_notification.save()
+
+    def update_notifications_for_new_message(self):
+        room = Room.objects.get(id=self.room_id)
+        for user in room.members.all():
+            notification = UserRoomNotification.objects.get(user=user, room=room)
+            message, created = Message.objects.get_or_create(
+                room=room, creator=self.user
+            )
+            notification.message = message
+            notification.read = user == self.user
+            notification.save()
+
+    def create_message_notifications_for_new_message(self):
+        room = Room.objects.get(id=self.room_id)
+        for user in room.members.all():
+            message, created = Message.objects.get_or_create(
+                room=room, creator=self.user
+            )
+            notification, created = MessageNotification.objects.get_or_create(
+                receiver=user, room=room, message=message
+            )
+            notification.read = user == self.user
+            notification.save()
+
     def get_room(self, phone_numbers):
         usernames_to_notify = []
         phone_numbers.append(self.user.phone_number)
@@ -229,6 +300,17 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         message, created = Message.objects.get_or_create(room=room, creator=self.user)
         return message
 
+    def get_all_room_members(self):
+        room = Room.objects.filter(id=self.room_id)
+        if room.exists():
+            room = room.first()
+            members = room.members.all().values()
+        else:
+            members = []
+        member_display_names = [user["display_name"] for user in members]
+        member_usernames = [user["username"] for user in members]
+        return member_display_names, member_usernames
+
     async def connect(self):
         await self.accept()
         self.user = self.scope["user"]
@@ -270,6 +352,46 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.update_room_name(content))
             if content.get("command") == "fetch_upload_url":
                 asyncio.create_task(self.fetch_upload_url())
+            if content.get("command") == "send_message":
+                asyncio.create_task(self.send_message())
+
+    async def send_message(self):
+        await database_sync_to_async(self.update_notifications_for_new_message)()
+        await database_sync_to_async(
+            self.create_message_notifications_for_new_message
+        )()
+        await self.channel_layer.group_send(
+            self.room_id,
+            {"type": "refresh_notifications"},
+        )
+        (
+            room_member_display_names,
+            room_member_usernames,
+        ) = await database_sync_to_async(self.get_all_room_members)()
+        for username in room_member_usernames:
+            await self.channel_layer.group_send(
+                username,
+                {
+                    "type": "refresh_notifications",
+                },
+            )
+        await self.channel_layer.group_send(
+            self.room_id,
+            {"type": "room_notified"},
+        )
+
+    async def fetch_message_notifications(self):
+        message_notifications = await database_sync_to_async(
+            self.get_message_notifications
+        )()
+        await self.channel_layer.send(
+            self.channel_name,
+            {
+                "type": "message_notifications",
+                "message_notifications": message_notifications,
+                "refresh_message_notifications_in": 604790000,
+            },
+        )
 
     async def fetch_upload_url(self):
         message = await database_sync_to_async(self.get_message)()
@@ -310,3 +432,19 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     async def upload_url(self, event):
         # Send message to WebSocket
         await self.send_json(event)
+
+    async def room_notified(self, event):
+        await database_sync_to_async(self.read_unread_room_notification)()
+        await self.channel_layer.group_send(
+            self.user.username,
+            {
+                "type": "refresh_notifications",
+            },
+        )
+
+    async def message_notifications(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
+    async def refresh_notifications(self, event):
+        await self.fetch_message_notifications()
