@@ -116,6 +116,7 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
             .order_by("-timestamp")
         )
         notifications.sort(key=itemgetter("timestamp"), reverse=True)
+        notifications.sort(key=itemgetter("read"))
         for notification in notifications:
             notification["room"] = str(notification["room"])
             notification["timestamp"] = notification["timestamp"].strftime(
