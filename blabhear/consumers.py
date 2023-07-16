@@ -312,6 +312,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         member_usernames = [user["username"] for user in members]
         return member_display_names, member_usernames
 
+    def read_unread_message_notification(self, notification_id):
+        message_notification = MessageNotification.objects.get(id=notification_id)
+        message_notification.read = True
+        message_notification.save()
+
     async def connect(self):
         await self.accept()
         self.user = self.scope["user"]
@@ -365,6 +370,14 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.send_message())
             if content.get("command") == "fetch_message_notifications":
                 asyncio.create_task(self.fetch_message_notifications())
+            if content.get("command") == "read_message_notification":
+                asyncio.create_task(self.read_message_notification(content))
+
+    async def read_message_notification(self, input_payload):
+        await database_sync_to_async(self.read_unread_message_notification)(
+            input_payload["message_notification_id"]
+        )
+        await self.fetch_message_notifications()
 
     async def send_message(self):
         await database_sync_to_async(self.update_notifications_for_new_message)()
