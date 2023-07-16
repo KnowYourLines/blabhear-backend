@@ -348,6 +348,9 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 await self.channel_layer.group_discard(self.room_id, self.channel_name)
             phone_numbers = content.get("phone_numbers", [])
             await self.initialize_room(phone_numbers)
+        if content.get("command") == "disconnect":
+            if self.room_id:
+                await self.channel_layer.group_discard(self.room_id, self.channel_name)
         user_allowed = await database_sync_to_async(self.user_allowed)()
         if user_allowed:
             if content.get("command") == "update_room_name":
