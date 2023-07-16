@@ -210,10 +210,9 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     def read_unread_room_notification(self):
         room = Room.objects.get(id=self.room_id)
-        room_notification = UserRoomNotification.objects.get(user=self.user, room=room)
-        if not room_notification.read:
-            room_notification.read = True
-            room_notification.save()
+        UserRoomNotification.objects.filter(
+            user=self.user, room=room, read=False
+        ).update(read=True)
 
     def update_notifications_for_new_message(self):
         room = Room.objects.get(id=self.room_id)
@@ -313,9 +312,9 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         return member_display_names, member_usernames
 
     def read_unread_message_notification(self, notification_id):
-        message_notification = MessageNotification.objects.get(id=notification_id)
-        message_notification.read = True
-        message_notification.save()
+        MessageNotification.objects.filter(id=notification_id, read=False).update(
+            read=True
+        )
 
     async def connect(self):
         await self.accept()
