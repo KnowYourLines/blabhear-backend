@@ -341,6 +341,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             )
         await self.fetch_upload_url()
         await self.fetch_message_notifications()
+        await self.channel_layer.send(
+            self.channel_name,
+            {"type": "room_notified"},
+        )
 
     async def receive_json(self, content, **kwargs):
         if content.get("command") == "connect":
