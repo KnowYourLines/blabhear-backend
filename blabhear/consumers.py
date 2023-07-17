@@ -6,6 +6,7 @@ import phonenumbers
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.postgres.aggregates import ArrayAgg
+from django.db.models import Case, When, BooleanField
 
 from blabhear.exceptions import UserNotAllowedError
 from blabhear.models import (
@@ -183,12 +184,20 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             self.user.messagenotification_set.filter(
                 room__id=self.room_id, message__creator__id__in=room_member_pks
             )
+            .annotate(
+                is_own_message=Case(
+                    When(message__creator=self.user, then=True),
+                    default=False,
+                    output_field=BooleanField(),
+                )
+            )
             .values(
                 "id",
                 "message__id",
                 "read",
                 "timestamp",
                 "message__creator__display_name",
+                "is_own_message",
             )
             .order_by("-timestamp")
         )
@@ -312,7 +321,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         )
 
     def delete_message_notification(self, notification_id):
-        MessageNotification.objects.filter(id=notification_id).delete()
+        notification = MessageNotification.objects.get(id=notification_id)
+        notification.delete()
 
     async def connect(self):
         await self.accept()
