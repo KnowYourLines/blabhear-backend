@@ -69,11 +69,12 @@ class MessageNotification(models.Model):
 
 class Report(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    reporter = models.ForeignKey(User, on_delete=models.CASCADE)
+    reporter = models.ForeignKey(User, on_delete=models.CASCADE, editable=False)
     reported_at = models.DateTimeField(auto_now_add=True)
     reported_user = models.ForeignKey(
-        User, on_delete=models.CASCADE, related_name="reports"
+        User, on_delete=models.CASCADE, related_name="reports", editable=False
     )
+    message_uuid = models.UUIDField(editable=False)
 
     class Meta:
         constraints = [

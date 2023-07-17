@@ -325,7 +325,9 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     def delete_message_notification(self, notification_id):
         notification = MessageNotification.objects.get(id=notification_id)
         report = Report.objects.create(
-            reporter=self.user, reported_user=notification.message.creator
+            reporter=self.user,
+            reported_user=notification.message.creator,
+            message_uuid=notification.message.id,
         )
         copy_existing(
             source_blob_name=str(notification.message.id),
