@@ -15,10 +15,12 @@ from blabhear.models import (
     Message,
     UserRoomNotification,
     MessageNotification,
+    Report,
 )
 from blabhear.storage import (
     generate_upload_signed_url_v4,
     generate_download_signed_url_v4,
+    copy_existing,
 )
 
 logger = logging.getLogger(__name__)
@@ -322,6 +324,13 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     def delete_message_notification(self, notification_id):
         notification = MessageNotification.objects.get(id=notification_id)
+        report = Report.objects.create(
+            reporter=self.user, reported_user=notification.message.creator
+        )
+        copy_existing(
+            source_blob_name=str(notification.message.id),
+            destination_blob_name=str(report.id),
+        )
         notification.delete()
 
     async def connect(self):

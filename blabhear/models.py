@@ -2,6 +2,7 @@ import uuid
 
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.db.models import Q, F
 
 
 class User(AbstractUser):
@@ -64,3 +65,22 @@ class MessageNotification(models.Model):
                 fields=["room", "receiver", "message"], name="unique_msg_notification"
             ),
         ]
+
+
+class Report(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reporter = models.ForeignKey(User, on_delete=models.CASCADE)
+    reported_at = models.DateTimeField(auto_now_add=True)
+    reported_user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="reports"
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                name="not_same", check=~Q(reporter=F("reported_user"))
+            )
+        ]
+
+    def __str__(self):
+        return str(self.id)

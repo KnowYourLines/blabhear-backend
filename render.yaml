@@ -12,7 +12,7 @@ services:
     region: ohio
     plan: free
     branch: main
-    buildCommand: "pip install -r requirements.txt; python manage.py makemigrations blabhear; python manage.py migrate"
+    buildCommand: "pip install -r requirements.txt; python manage.py makemigrations blabhear; python manage.py migrate; python manage.py collectstatic --no-input"
     startCommand: "daphne server.asgi:application --bind 0.0.0.0 --port $PORT"
     envVars:
       - key: PORT

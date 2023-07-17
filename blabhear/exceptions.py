@@ -8,3 +8,7 @@ class FirebaseAuthError(Exception):
 
 class UserNotAllowedError(Exception):
     pass
+
+
+class InvalidArgumentError(Exception):
+    pass
