@@ -119,9 +119,7 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
         notifications.sort(key=itemgetter("read"))
         for notification in notifications:
             notification["room"] = str(notification["room"])
-            notification["timestamp"] = notification["timestamp"].strftime(
-                "%d-%m-%Y %H:%M:%S"
-            )
+            notification["timestamp"] = notification["timestamp"].timestamp()
             if len(notification["member_phone_numbers"]) == 2:
                 receiver_phone_number = next(
                     phone_number
@@ -199,10 +197,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         for notification in notifications:
             notification["id"] = str(notification["id"])
             notification["message__id"] = str(notification["message__id"])
-            notification["readable_timestamp"] = notification["timestamp"].strftime(
-                "%d-%m-%Y %H:%M:%S"
-            )
-            notification["timestamp"] = str(notification["timestamp"])
+            notification["timestamp"] = notification["timestamp"].timestamp()
             notification["url"] = generate_download_signed_url_v4(
                 notification["message__id"]
             )
