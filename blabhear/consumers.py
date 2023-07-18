@@ -335,7 +335,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         report = Report.objects.create(
             reporter=self.user,
             reported_user=notification.message.creator,
-            message_uuid=notification.message.id,
+            message=notification.message,
         )
         copy_existing(
             source_blob_name=str(notification.message.id),

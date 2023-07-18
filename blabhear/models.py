@@ -74,7 +74,7 @@ class Report(models.Model):
     reported_user = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name="reports", editable=False
     )
-    message_uuid = models.UUIDField(editable=False)
+    message = models.ForeignKey(Message, on_delete=models.CASCADE)
 
     class Meta:
         constraints = [
