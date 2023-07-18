@@ -17,6 +17,9 @@ class Room(models.Model):
     members = models.ManyToManyField(User)
     display_name = models.CharField(max_length=150, blank=True)
 
+    def __str__(self):
+        return str(self.id)
+
 
 class Message(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -31,6 +34,9 @@ class Message(models.Model):
                 fields=["creator", "room"], name="unique_creator_room_message"
             ),
         ]
+
+    def __str__(self):
+        return str(self.id)
 
 
 class UserRoomNotification(models.Model):
