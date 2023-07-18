@@ -108,6 +108,13 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
             self.user.userroomnotification_set.annotate(
                 member_phone_numbers=ArrayAgg("room__members__phone_number")
             )
+            .annotate(
+                is_own_message=Case(
+                    When(message__creator=self.user, then=True),
+                    default=False,
+                    output_field=BooleanField(),
+                )
+            )
             .values(
                 "member_phone_numbers",
                 "room",
@@ -115,6 +122,7 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
                 "timestamp",
                 "read",
                 "message__creator__display_name",
+                "is_own_message",
             )
             .order_by("-timestamp")
         )
