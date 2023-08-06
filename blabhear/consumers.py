@@ -124,10 +124,8 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
                 "message__creator__display_name",
                 "is_own_message",
             )
-            .order_by("-timestamp")
+            .order_by("read", "-timestamp")
         )
-        notifications.sort(key=itemgetter("timestamp"), reverse=True)
-        notifications.sort(key=itemgetter("read"))
         for notification in notifications:
             notification["room"] = str(notification["room"])
             notification["timestamp"] = notification["timestamp"].timestamp()
@@ -209,10 +207,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 "message__creator__display_name",
                 "is_own_message",
             )
-            .order_by("-timestamp")
+            .order_by("timestamp")
         )
-        notifications.sort(key=itemgetter("timestamp"), reverse=True)
-        notifications.sort(key=itemgetter("read"))
         for notification in notifications:
             notification["id"] = str(notification["id"])
             notification["message__id"] = str(notification["message__id"])
