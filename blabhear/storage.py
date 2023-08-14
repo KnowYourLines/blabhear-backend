@@ -50,32 +50,3 @@ def generate_download_signed_url_v4(blob_name):
         method="GET",
     )
     return url
-
-
-def copy_existing(
-    *,
-    source_blob_name,
-    destination_blob_name,
-):
-    if source_blob_name == destination_blob_name:
-        raise InvalidArgumentError(
-            "Source blob name and destination blob name must be different"
-        )
-    bucket = storage_client.bucket(os.environ.get("GCP_BUCKET_NAME"))
-    source_blob = bucket.blob(source_blob_name)
-
-    # Optional: set a generation-match precondition to avoid potential race conditions
-    # and data corruptions. The request to copy is aborted if the object's
-    # generation number does not match your precondition. For a destination
-    # object that does not yet exist, set the if_generation_match precondition to 0.
-    # If the destination object already exists in your bucket, set instead a
-    # generation-match precondition using its generation number.
-    # There is also an `if_source_generation_match` parameter, which is not used in this example.
-    destination_generation_match_precondition = 0
-
-    bucket.copy_blob(
-        source_blob,
-        bucket,
-        destination_blob_name,
-        if_generation_match=destination_generation_match_precondition,
-    )

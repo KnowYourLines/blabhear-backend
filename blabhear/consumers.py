@@ -22,7 +22,6 @@ from blabhear.models import (
 from blabhear.storage import (
     generate_upload_signed_url_v4,
     generate_download_signed_url_v4,
-    copy_existing,
 )
 
 logger = logging.getLogger(__name__)
@@ -358,10 +357,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             reporter=self.user,
             reported_user=notification.message.creator,
             message=notification.message,
-        )
-        copy_existing(
-            source_blob_name=str(notification.message.id),
-            destination_blob_name=str(report.id),
         )
         notification.delete()
 
