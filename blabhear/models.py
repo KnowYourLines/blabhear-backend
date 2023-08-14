@@ -28,13 +28,6 @@ class Message(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["creator", "room"], name="unique_creator_room_message"
-            ),
-        ]
-
     def __str__(self):
         return str(self.id)
 

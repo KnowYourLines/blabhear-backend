@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from operator import itemgetter
+import uuid
 
 import phonenumbers
 from channels.db import database_sync_to_async
@@ -224,23 +224,17 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             user=self.user, room=room, read=False
         ).update(read=True)
 
-    def update_notifications_for_new_message(self):
+    def update_notifications_for_new_message(self, message):
         room = Room.objects.get(id=self.room_id)
         for user in room.members.all():
             notification = UserRoomNotification.objects.get(user=user, room=room)
-            message, created = Message.objects.get_or_create(
-                room=room, creator=self.user
-            )
             notification.message = message
             notification.read = user == self.user
             notification.save()
 
-    def create_message_notifications_for_new_message(self):
+    def create_message_notifications_for_new_message(self, message):
         room = Room.objects.get(id=self.room_id)
         for user in room.members.all():
-            message, created = Message.objects.get_or_create(
-                room=room, creator=self.user
-            )
             notification, created = MessageNotification.objects.get_or_create(
                 receiver=user, room=room, message=message
             )
@@ -305,9 +299,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             ]
         return room.display_name, usernames_to_notify
 
-    def get_message(self):
+    def get_message(self, filename):
         room = Room.objects.get(id=self.room_id)
-        message, created = Message.objects.get_or_create(room=room, creator=self.user)
+        message, created = Message.objects.get_or_create(
+            id=filename, room=room, creator=self.user
+        )
         return message
 
     def get_all_room_members(self):
@@ -389,7 +385,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             if content.get("command") == "fetch_upload_url":
                 asyncio.create_task(self.fetch_upload_url())
             if content.get("command") == "send_message":
-                asyncio.create_task(self.send_message())
+                asyncio.create_task(self.send_message(content))
             if content.get("command") == "fetch_message_notifications":
                 asyncio.create_task(self.fetch_message_notifications())
             if content.get("command") == "read_message_notification":
@@ -409,30 +405,37 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         )
         await self.fetch_message_notifications()
 
-    async def send_message(self):
-        await database_sync_to_async(self.update_notifications_for_new_message)()
-        await database_sync_to_async(
-            self.create_message_notifications_for_new_message
-        )()
-        await self.channel_layer.group_send(
-            self.room_id,
-            {"type": "refresh_notifications"},
-        )
-        (
-            room_member_display_names,
-            room_member_usernames,
-        ) = await database_sync_to_async(self.get_all_room_members)()
-        for username in room_member_usernames:
-            await self.channel_layer.group_send(
-                username,
-                {
-                    "type": "refresh_notifications",
-                },
-            )
-        await self.channel_layer.group_send(
-            self.room_id,
-            {"type": "room_notified"},
-        )
+    async def send_message(self, input_payload):
+        filename = input_payload.get("filename")
+        if filename:
+            message = await database_sync_to_async(self.get_message)(filename)
+            if message:
+                await database_sync_to_async(self.update_notifications_for_new_message)(
+                    message
+                )
+                await database_sync_to_async(
+                    self.create_message_notifications_for_new_message
+                )(message)
+                await self.channel_layer.group_send(
+                    self.room_id,
+                    {"type": "refresh_notifications"},
+                )
+                (
+                    room_member_display_names,
+                    room_member_usernames,
+                ) = await database_sync_to_async(self.get_all_room_members)()
+                for username in room_member_usernames:
+                    await self.channel_layer.group_send(
+                        username,
+                        {
+                            "type": "refresh_notifications",
+                        },
+                    )
+                await self.channel_layer.group_send(
+                    self.room_id,
+                    {"type": "room_notified"},
+                )
+                await self.fetch_upload_url()
 
     async def fetch_message_notifications(self):
         message_notifications = await database_sync_to_async(
@@ -448,14 +451,14 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         )
 
     async def fetch_upload_url(self):
-        message = await database_sync_to_async(self.get_message)()
-        filename = str(message.id)
+        filename = str(uuid.uuid4())
         url = generate_upload_signed_url_v4(filename)
         await self.channel_layer.send(
             self.channel_name,
             {
                 "type": "upload_url",
                 "upload_url": url,
+                "upload_filename": filename,
                 "refresh_upload_destination_in": 604790000,
             },
         )
