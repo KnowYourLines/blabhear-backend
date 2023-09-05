@@ -222,18 +222,16 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                     page = 1
                 notifications_page = pages.page(page)
             else:
-                notifications_page = pages.page(pages.num_pages)
                 oldest_unread = notifications.order_by("read", "timestamp").first()
                 if oldest_unread:
-                    if not oldest_unread["read"]:
-                        position = self.user.messagenotification_set.filter(
-                            room__id=self.room_id,
-                            message__creator__id__in=room_member_pks,
-                            timestamp__lt=oldest_unread["timestamp"],
-                        ).count()
-                        items_per_page = 10
-                        page = (position / items_per_page) // 1 + 1
-                        notifications_page = pages.page(page)
+                    position = notifications.filter(
+                        timestamp__lt=oldest_unread["timestamp"]
+                    ).count()
+                    items_per_page = 10
+                    page = (position / items_per_page) // 1 + 1
+                    notifications_page = pages.page(page)
+                else:
+                    notifications_page = pages.page(pages.num_pages)
             for notification in notifications_page:
                 notification["id"] = str(notification["id"])
                 notification["message__id"] = str(notification["message__id"])
