@@ -4,13 +4,11 @@ from blabhear.models import Report, Message
 
 
 class ReadOnlyReportModelAdmin(admin.ModelAdmin):
-    readonly_fields = ("reporter", "reported_user", "message", "reported_at")
-    list_display = ("reporter", "reported_user", "message", "reported_at")
+    readonly_fields = ("reporter", "reported_user", "message")
 
 
 class ReadOnlyMessageModelAdmin(admin.ModelAdmin):
-    readonly_fields = ("creator", "room", "created_at")
-    list_display = ("creator", "room", "created_at")
+    readonly_fields = ("creator", "room")
 
 
 admin.site.register(Report, ReadOnlyReportModelAdmin)

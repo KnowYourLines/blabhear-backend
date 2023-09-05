@@ -6,8 +6,6 @@ import phonenumbers
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.postgres.aggregates import ArrayAgg
-from django.core.exceptions import ObjectDoesNotExist
-from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Case, When, BooleanField
 
 from blabhear.exceptions import UserNotAllowedError
@@ -186,64 +184,38 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         self.user = None
         self.room_id = None
 
-    def get_message_notifications(self, *, page):
+    def get_message_notifications(self):
         room = Room.objects.get(id=self.room_id)
         room_member_pks = room.members.all().values_list("pk", flat=True)
-        try:
-            notifications = (
-                self.user.messagenotification_set.filter(
-                    room__id=self.room_id, message__creator__id__in=room_member_pks
-                )
-                .annotate(
-                    is_own_message=Case(
-                        When(message__creator=self.user, then=True),
-                        default=False,
-                        output_field=BooleanField(),
-                    )
-                )
-                .values(
-                    "id",
-                    "message__id",
-                    "read",
-                    "timestamp",
-                    "message__creator__display_name",
-                    "is_own_message",
+        notifications = list(
+            self.user.messagenotification_set.filter(
+                room__id=self.room_id, message__creator__id__in=room_member_pks
+            )
+            .annotate(
+                is_own_message=Case(
+                    When(message__creator=self.user, then=True),
+                    default=False,
+                    output_field=BooleanField(),
                 )
             )
-            pages = Paginator(
-                notifications.order_by("timestamp"),
-                10,
+            .values(
+                "id",
+                "message__id",
+                "read",
+                "timestamp",
+                "message__creator__display_name",
+                "is_own_message",
             )
-            if page:
-                page = int(page)
-                if page > pages.num_pages:
-                    page = pages.num_pages
-                elif page < 1:
-                    page = 1
-                notifications_page = pages.page(page)
-            else:
-                oldest_unread = notifications.order_by("read", "timestamp").first()
-                if oldest_unread:
-                    position = notifications.filter(
-                        timestamp__lt=oldest_unread["timestamp"]
-                    ).count()
-                    items_per_page = 10
-                    page = (position / items_per_page) // 1 + 1
-                    notifications_page = pages.page(page)
-                else:
-                    notifications_page = pages.page(pages.num_pages)
-            for notification in notifications_page:
-                notification["id"] = str(notification["id"])
-                notification["message__id"] = str(notification["message__id"])
-                notification["timestamp"] = notification["timestamp"].timestamp()
-                notification["url"] = generate_download_signed_url_v4(
-                    notification["message__id"]
-                )
-            return notifications_page.object_list, notifications_page.number
-        except ObjectDoesNotExist:
-            return [], page
-        except EmptyPage:
-            return [], page
+            .order_by("timestamp")
+        )
+        for notification in notifications:
+            notification["id"] = str(notification["id"])
+            notification["message__id"] = str(notification["message__id"])
+            notification["timestamp"] = notification["timestamp"].timestamp()
+            notification["url"] = generate_download_signed_url_v4(
+                notification["message__id"]
+            )
+        return notifications
 
     def read_unread_room_notification(self):
         room = Room.objects.get(id=self.room_id)
@@ -386,7 +358,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 username, {"type": "refresh_notifications"}
             )
         await self.fetch_upload_url()
-        await self.fetch_message_notifications({})
+        await self.fetch_message_notifications()
         await self.channel_layer.send(
             self.channel_name,
             {"type": "room_notified"},
@@ -410,7 +382,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             if content.get("command") == "send_message":
                 asyncio.create_task(self.send_message(content))
             if content.get("command") == "fetch_message_notifications":
-                asyncio.create_task(self.fetch_message_notifications(content))
+                asyncio.create_task(self.fetch_message_notifications())
             if content.get("command") == "read_message_notification":
                 asyncio.create_task(self.read_message_notification(content))
             if content.get("command") == "report_message_notification":
@@ -420,13 +392,13 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await database_sync_to_async(self.delete_message_notification)(
             input_payload["message_notification_id"]
         )
-        await self.fetch_message_notifications(input_payload)
+        await self.fetch_message_notifications()
 
     async def read_message_notification(self, input_payload):
         await database_sync_to_async(self.read_unread_message_notification)(
             input_payload["message_notification_id"]
         )
-        await self.fetch_message_notifications(input_payload)
+        await self.fetch_message_notifications()
 
     async def send_message(self, input_payload):
         filename = input_payload.get("filename")
@@ -460,18 +432,16 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 )
                 await self.fetch_upload_url()
 
-    async def fetch_message_notifications(self, input_payload):
-        page_number = input_payload.get("page_number")
-        message_notifications, page_number = await database_sync_to_async(
+    async def fetch_message_notifications(self):
+        message_notifications = await database_sync_to_async(
             self.get_message_notifications
-        )(page=page_number)
+        )()
         await self.channel_layer.send(
             self.channel_name,
             {
                 "type": "message_notifications",
                 "message_notifications": message_notifications,
                 "refresh_message_notifications_in": 604790000,
-                "page_number": page_number,
             },
         )
 
@@ -529,4 +499,4 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json(event)
 
     async def refresh_notifications(self, event):
-        await self.send_json(event)
+        await self.fetch_message_notifications()
