@@ -178,6 +178,14 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
         await self.fetch_notifications()
 
 
+def serialize_msg_notification(notification):
+    notification["id"] = str(notification["id"])
+    notification["message__id"] = str(notification["message__id"])
+    notification["timestamp"] = notification["timestamp"].timestamp()
+    notification["url"] = generate_download_signed_url_v4(notification["message__id"])
+    return notification
+
+
 class RoomConsumer(AsyncJsonWebsocketConsumer):
     def __init__(self, *args, **kwargs):
         super().__init__(args, kwargs)
@@ -187,7 +195,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     def get_message_notifications(self):
         room = Room.objects.get(id=self.room_id)
         room_member_pks = room.members.all().values_list("pk", flat=True)
-        notifications = list(
+        latest_notification = (
             self.user.messagenotification_set.filter(
                 room__id=self.room_id, message__creator__id__in=room_member_pks
             )
@@ -207,14 +215,12 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 "is_own_message",
             )
             .order_by("timestamp")
+            .last()
         )
-        for notification in notifications:
-            notification["id"] = str(notification["id"])
-            notification["message__id"] = str(notification["message__id"])
-            notification["timestamp"] = notification["timestamp"].timestamp()
-            notification["url"] = generate_download_signed_url_v4(
-                notification["message__id"]
-            )
+        notifications = []
+        if latest_notification:
+            latest_notification = serialize_msg_notification(latest_notification)
+            notifications.append(latest_notification)
         return notifications
 
     def read_unread_room_notification(self):
@@ -222,6 +228,30 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         UserRoomNotification.objects.filter(
             user=self.user, room=room, read=False
         ).update(read=True)
+
+    def get_new_message_notification_event(self, event):
+        message = Message.objects.get(id=event["message_id"])
+        notification = (
+            message.messagenotification_set.filter(receiver=self.user)
+            .annotate(
+                is_own_message=Case(
+                    When(message__creator=self.user, then=True),
+                    default=False,
+                    output_field=BooleanField(),
+                )
+            )
+            .values(
+                "id",
+                "message__id",
+                "read",
+                "timestamp",
+                "message__creator__display_name",
+                "is_own_message",
+            )
+            .first()
+        )
+        event["message"] = serialize_msg_notification(notification)
+        return event
 
     def update_notifications_for_new_message(self, message):
         room = Room.objects.get(id=self.room_id)
@@ -392,13 +422,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await database_sync_to_async(self.delete_message_notification)(
             input_payload["message_notification_id"]
         )
-        await self.fetch_message_notifications()
 
     async def read_message_notification(self, input_payload):
         await database_sync_to_async(self.read_unread_message_notification)(
             input_payload["message_notification_id"]
         )
-        await self.fetch_message_notifications()
 
     async def send_message(self, input_payload):
         filename = input_payload.get("filename")
@@ -413,7 +441,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 )(message)
                 await self.channel_layer.group_send(
                     self.room_id,
-                    {"type": "refresh_notifications"},
+                    {"type": "new_message", "message_id": str(message.id)},
                 )
                 (
                     room_member_display_names,
@@ -498,5 +526,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         # Send message to WebSocket
         await self.send_json(event)
 
-    async def refresh_notifications(self, event):
-        await self.fetch_message_notifications()
+    async def new_message(self, event):
+        event = await database_sync_to_async(self.get_new_message_notification_event)(
+            event
+        )
+        await self.send_json(event)
