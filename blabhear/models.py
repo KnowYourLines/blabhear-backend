@@ -55,7 +55,6 @@ class MessageNotification(models.Model):
     receiver = models.ForeignKey(User, on_delete=models.CASCADE)
     room = models.ForeignKey(Room, on_delete=models.CASCADE)
     timestamp = models.DateTimeField(auto_now=True)
-    read = models.BooleanField(default=False)
     message = models.ForeignKey(Message, on_delete=models.CASCADE)
 
     class Meta:

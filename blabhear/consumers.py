@@ -209,7 +209,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             .values(
                 "id",
                 "message__id",
-                "read",
                 "timestamp",
                 "message__creator__display_name",
                 "is_own_message",
@@ -243,7 +242,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             .values(
                 "id",
                 "message__id",
-                "read",
                 "timestamp",
                 "message__creator__display_name",
                 "is_own_message",
@@ -267,7 +265,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             notification, created = MessageNotification.objects.get_or_create(
                 receiver=user, room=room, message=message
             )
-            notification.read = user == self.user
             notification.save()
 
     def get_room(self, phone_numbers):
@@ -346,11 +343,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         member_usernames = [user["username"] for user in members]
         return member_display_names, member_usernames
 
-    def read_unread_message_notification(self, notification_id):
-        MessageNotification.objects.filter(id=notification_id, read=False).update(
-            read=True
-        )
-
     def delete_message_notification(self, notification_id):
         notification = MessageNotification.objects.get(id=notification_id)
         report = Report.objects.create(
@@ -413,18 +405,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.send_message(content))
             if content.get("command") == "fetch_message_notifications":
                 asyncio.create_task(self.fetch_message_notifications())
-            if content.get("command") == "read_message_notification":
-                asyncio.create_task(self.read_message_notification(content))
             if content.get("command") == "report_message_notification":
                 asyncio.create_task(self.report_message_notification(content))
 
     async def report_message_notification(self, input_payload):
         await database_sync_to_async(self.delete_message_notification)(
-            input_payload["message_notification_id"]
-        )
-
-    async def read_message_notification(self, input_payload):
-        await database_sync_to_async(self.read_unread_message_notification)(
             input_payload["message_notification_id"]
         )
 
