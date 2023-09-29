@@ -7,6 +7,7 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.db.models import Case, When, BooleanField
+from phonenumbers.phonenumberutil import NumberParseException
 
 from blabhear.exceptions import UserNotAllowedError
 from blabhear.models import (
@@ -65,14 +66,17 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
                     ),
                     contact["phoneNumbers"][0]["number"],
                 )
-                phone_number = phonenumbers.parse(
-                    phone_number, self.user.alpha2_country_code
-                )
-                if phonenumbers.is_valid_number(phone_number):
-                    phone_number = phonenumbers.format_number(
-                        phone_number, phonenumbers.PhoneNumberFormat.E164
+                try:
+                    phone_number = phonenumbers.parse(
+                        phone_number, self.user.alpha2_country_code
                     )
-                    valid_phone_numbers.append(phone_number)
+                    if phonenumbers.is_valid_number(phone_number):
+                        phone_number = phonenumbers.format_number(
+                            phone_number, phonenumbers.PhoneNumberFormat.E164
+                        )
+                        valid_phone_numbers.append(phone_number)
+                except NumberParseException:
+                    pass
         registered_contacts = await database_sync_to_async(
             self.find_users_by_phone_numbers
         )(valid_phone_numbers)
