@@ -3,9 +3,11 @@ import os
 from urllib.parse import parse_qs
 
 import firebase_admin
+import phonenumbers
 from channels.auth import AuthMiddlewareStack
 from channels.db import database_sync_to_async
 from firebase_admin import auth, credentials
+from phonenumbers.phonenumberutil import region_code_for_number
 
 from blabhear.exceptions import InvalidFirebaseAuthToken, FirebaseAuthError
 from blabhear.models import User
@@ -45,20 +47,17 @@ def get_user(query_string):
         uid = decoded_token.get("uid")
     except Exception:
         raise FirebaseAuthError("Missing uid.")
-    country = query_string.get("country")
-    if country:
-        user, created = User.objects.get_or_create(
-            username=uid,
-            defaults={
-                "phone_number": decoded_token.get("phone_number"),
-                "alpha2_country_code": country[0],
-                "display_name": decoded_token.get("phone_number"),
-            },
-        )
-    else:
-        user = User.objects.get(
-            username=uid,
-        )
+    phone_number = decoded_token.get("phone_number")
+    user, created = User.objects.get_or_create(
+        username=uid,
+        defaults={
+            "phone_number": phone_number,
+            "alpha2_country_code": region_code_for_number(
+                phonenumbers.parse(phone_number)
+            ),
+            "display_name": phone_number,
+        },
+    )
     return user
 
 
