@@ -10,6 +10,7 @@ class User(AbstractUser):
     phone_number = models.CharField(max_length=150, unique=True)
     alpha2_country_code = models.CharField(max_length=2, null=False, blank=False)
     display_name = models.CharField(max_length=150)
+    blocked_users = models.ManyToManyField("self", blank=True, null=True)
 
 
 class Room(models.Model):

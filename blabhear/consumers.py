@@ -252,24 +252,27 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             )
             .first()
         )
-        event["message"] = serialize_msg_notification(notification)
-        return event
+        if notification:
+            event["message"] = serialize_msg_notification(notification)
+            return event
 
     def update_notifications_for_new_message(self, message):
         room = Room.objects.get(id=self.room_id)
         for user in room.members.all():
-            notification = UserRoomNotification.objects.get(user=user, room=room)
-            notification.message = message
-            notification.read = user == self.user
-            notification.save()
+            if not user.blocked_users.filter(id=self.user.id).exists():
+                notification = UserRoomNotification.objects.get(user=user, room=room)
+                notification.message = message
+                notification.read = user == self.user
+                notification.save()
 
     def create_message_notifications_for_new_message(self, message):
         room = Room.objects.get(id=self.room_id)
         for user in room.members.all():
-            notification, created = MessageNotification.objects.get_or_create(
-                receiver=user, room=room, message=message
-            )
-            notification.save()
+            if not user.blocked_users.filter(id=self.user.id).exists():
+                notification, created = MessageNotification.objects.get_or_create(
+                    receiver=user, room=room, message=message
+                )
+                notification.save()
 
     def get_room(self, phone_numbers):
         usernames_to_notify = []
@@ -347,14 +350,22 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         member_usernames = [user["username"] for user in members]
         return member_display_names, member_usernames
 
-    def delete_message_notification(self, notification_id):
+    def report_message_notification(self, notification_id):
         notification = MessageNotification.objects.get(id=notification_id)
-        report = Report.objects.create(
+        Report.objects.get_or_create(
             reporter=self.user,
             reported_user=notification.message.creator,
             message=notification.message,
         )
+
+    def delete_message_notification(self, notification_id):
+        notification = MessageNotification.objects.get(id=notification_id)
         notification.delete()
+
+    def block_message_notification_user(self, notification_id):
+        notification = MessageNotification.objects.get(id=notification_id)
+        user_to_block = notification.message.creator
+        self.user.blocked_users.add(user_to_block)
 
     async def connect(self):
         await self.accept()
@@ -410,10 +421,31 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             if content.get("command") == "fetch_message_notifications":
                 asyncio.create_task(self.fetch_message_notifications())
             if content.get("command") == "report_message_notification":
-                asyncio.create_task(self.report_message_notification(content))
+                asyncio.create_task(self.report_msg_notification(content))
+            if content.get("command") == "delete_message_notification":
+                asyncio.create_task(self.delete_msg_notification(content))
+            if content.get("command") == "block_message_notification_user":
+                asyncio.create_task(self.block_msg_notification_user(content))
 
-    async def report_message_notification(self, input_payload):
+    async def report_msg_notification(self, input_payload):
+        await database_sync_to_async(self.report_message_notification)(
+            input_payload["message_notification_id"]
+        )
+
+    async def delete_msg_notification(self, input_payload):
         await database_sync_to_async(self.delete_message_notification)(
+            input_payload["message_notification_id"]
+        )
+        await self.channel_layer.send(
+            self.channel_name,
+            {
+                "type": "deleted_message_notification",
+                "message_notification_id": input_payload["message_notification_id"],
+            },
+        )
+
+    async def block_msg_notification_user(self, input_payload):
+        await database_sync_to_async(self.block_message_notification_user)(
             input_payload["message_notification_id"]
         )
 
@@ -515,8 +547,13 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         # Send message to WebSocket
         await self.send_json(event)
 
+    async def deleted_message_notification(self, event):
+        # Send message to WebSocket
+        await self.send_json(event)
+
     async def new_message(self, event):
         event = await database_sync_to_async(self.get_new_message_notification_event)(
             event
         )
-        await self.send_json(event)
+        if event:
+            await self.send_json(event)
