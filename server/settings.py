@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "channels",
     "blabhear",
+    "rest_framework",
 ]
 
 MIDDLEWARE = [
@@ -145,4 +146,10 @@ CHANNEL_LAYERS = {
             "hosts": [os.environ.get("REDIS_URL")],
         },
     },
+}
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "blabhear.authentication.FirebaseAuthentication",
+    ),
 }

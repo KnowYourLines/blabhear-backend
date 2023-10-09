@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from blabhear.models import Report, Message
+from blabhear.models import Report, Message, User
 
 
 class ReadOnlyReportModelAdmin(admin.ModelAdmin):
@@ -13,3 +13,4 @@ class ReadOnlyMessageModelAdmin(admin.ModelAdmin):
 
 admin.site.register(Report, ReadOnlyReportModelAdmin)
 admin.site.register(Message, ReadOnlyMessageModelAdmin)
+admin.site.register(User)

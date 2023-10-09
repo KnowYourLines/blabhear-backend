@@ -8,8 +8,15 @@ from channels.auth import AuthMiddlewareStack
 from channels.db import database_sync_to_async
 from firebase_admin import auth, credentials
 from phonenumbers.phonenumberutil import region_code_for_number
+from rest_framework import authentication
 
-from blabhear.exceptions import InvalidFirebaseAuthToken, FirebaseAuthError
+from blabhear.exceptions import (
+    InvalidFirebaseAuthToken,
+    FirebaseAuthError,
+    NoAuthToken,
+    InvalidAuthToken,
+    FirebaseError,
+)
 from blabhear.models import User
 
 logger = logging.getLogger(__name__)
@@ -48,17 +55,52 @@ def get_user(query_string):
     except Exception:
         raise FirebaseAuthError("Missing uid.")
     phone_number = decoded_token.get("phone_number")
-    user, created = User.objects.get_or_create(
-        username=uid,
+    user, created = User.objects.update_or_create(
+        phone_number=phone_number,
         defaults={
-            "phone_number": phone_number,
+            "username": uid,
             "alpha2_country_code": region_code_for_number(
                 phonenumbers.parse(phone_number)
             ),
-            "display_name": phone_number,
         },
     )
+    if created:
+        user.display_name = phone_number
+        user.save()
     return user
+
+
+class FirebaseAuthentication(authentication.BaseAuthentication):
+    def authenticate(self, request):
+        auth_header = request.META.get("HTTP_AUTHORIZATION")
+        if not auth_header:
+            raise NoAuthToken()
+        token = auth_header.split(" ").pop()
+        try:
+            decoded_token = auth.verify_id_token(token)
+        except auth.RevokedIdTokenError as exc:
+            raise InvalidAuthToken(str(exc))
+        except auth.UserDisabledError as exc:
+            raise InvalidAuthToken(str(exc))
+        except auth.InvalidIdTokenError as exc:
+            raise InvalidAuthToken(str(exc))
+
+        try:
+            uid = decoded_token.get("uid")
+        except Exception:
+            raise FirebaseError("Missing uid.")
+        phone_number = decoded_token.get("phone_number")
+        user, created = User.objects.get_or_create(
+            username=uid,
+            defaults={
+                "phone_number": phone_number,
+                "alpha2_country_code": region_code_for_number(
+                    phonenumbers.parse(phone_number)
+                ),
+                "display_name": phone_number,
+            },
+        )
+        return user, None
 
 
 class TokenAuthMiddleware:

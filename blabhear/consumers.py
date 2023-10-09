@@ -285,8 +285,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         for room_with_members in rooms_with_members:
             existing_room_members = set(room_with_members.members.all())
             if existing_room_members == set(members_to_be_added):
-                room = room_with_members
-                break
+                if not room:
+                    room = room_with_members
+                else:
+                    room_with_members.delete()
         if not room:
             room = Room.objects.create(display_name="Change the group name")
             room.members.add(*members_to_be_added)
@@ -367,6 +369,14 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         user_to_block = notification.message.creator
         self.user.blocked_users.add(user_to_block)
 
+    def phone_numbers_all_valid(self, phone_numbers):
+        if len(User.objects.filter(phone_number__in=phone_numbers)) != len(
+            phone_numbers
+        ):
+            return False
+        else:
+            return True
+
     async def connect(self):
         await self.accept()
         self.user = self.scope["user"]
@@ -406,7 +416,18 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             if self.room_id:
                 await self.channel_layer.group_discard(self.room_id, self.channel_name)
             phone_numbers = content.get("phone_numbers", [])
-            await self.initialize_room(phone_numbers)
+            valid = await database_sync_to_async(self.phone_numbers_all_valid)(
+                phone_numbers
+            )
+            if valid:
+                await self.initialize_room(phone_numbers)
+            else:
+                await self.channel_layer.group_send(
+                    self.user.username,
+                    {
+                        "type": "refresh_notifications",
+                    },
+                )
         if content.get("command") == "disconnect":
             if self.room_id:
                 await self.channel_layer.group_discard(self.room_id, self.channel_name)
