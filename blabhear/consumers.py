@@ -339,7 +339,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         message, created = Message.objects.get_or_create(
             id=filename, room=room, creator=self.user
         )
-        return message
+        return message, created
 
     def get_all_room_members(self):
         room = Room.objects.filter(id=self.room_id)
@@ -473,8 +473,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     async def send_message(self, input_payload):
         filename = input_payload.get("filename")
         if filename:
-            message = await database_sync_to_async(self.get_message)(filename)
-            if message:
+            message, created = await database_sync_to_async(self.get_message)(filename)
+            if message and created:
                 await database_sync_to_async(self.update_notifications_for_new_message)(
                     message
                 )
