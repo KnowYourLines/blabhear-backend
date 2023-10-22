@@ -291,6 +291,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             user.fcm_registration_token
             for user in room.members.all()
             if not user.blocked_users.filter(id=self.user.id).exists()
+            and user.id != self.user.id
         ]
         notification = messaging.Notification(
             title=message.room.display_name,
