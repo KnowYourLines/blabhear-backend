@@ -294,8 +294,12 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             and user.id != self.user.id
         ]
         notification = messaging.Notification(
-            title=message.room.display_name,
-            body=f"{message.creator.display_name} spoke",
+            title=f"{message.creator.display_name} spoke"
+            if message.room.members.count() == 2
+            else message.room.display_name,
+            body=None
+            if message.room.members.count() == 2
+            else f"{message.creator.display_name} spoke",
             image=None,
         )
         android_config = messaging.AndroidConfig(
