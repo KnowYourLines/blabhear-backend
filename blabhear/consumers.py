@@ -301,7 +301,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         push_message = messaging.MulticastMessage(
             tokens=registration_tokens,
             notification=notification,
-            data={"message_id": message.id},
         )
         messaging.send_multicast(push_message)
 
