@@ -11,6 +11,7 @@ class User(AbstractUser):
     alpha2_country_code = models.CharField(max_length=2, null=False, blank=False)
     display_name = models.CharField(max_length=150)
     blocked_users = models.ManyToManyField("self", blank=True)
+    fcm_registration_token = models.TextField(unique=True, null=True, blank=True)
 
 
 class Room(models.Model):

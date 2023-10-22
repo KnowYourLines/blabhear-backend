@@ -7,6 +7,7 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.db.models import Case, When, BooleanField
+from firebase_admin import messaging
 from phonenumbers.phonenumberutil import NumberParseException
 
 from blabhear.exceptions import UserNotAllowedError
@@ -52,6 +53,12 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
                 asyncio.create_task(self.update_display_name(content))
             if content.get("command") == "fetch_registered_contacts":
                 asyncio.create_task(self.fetch_registered_contacts(content))
+            if content.get("command") == "save_fcm_token":
+                asyncio.create_task(self.save_fcm_token(content))
+
+    async def save_fcm_token(self, input_payload):
+        fcm_token = input_payload["registration_token"]
+        await database_sync_to_async(self.save_user_fcm_token)(fcm_token)
 
     async def fetch_registered_contacts(self, input_payload):
         phone_contacts = input_payload["phone_contacts"]
@@ -84,6 +91,10 @@ class UserConsumer(AsyncJsonWebsocketConsumer):
             self.channel_name,
             {"type": "registered_contacts", "registered_contacts": registered_contacts},
         )
+
+    def save_user_fcm_token(self, fcm_token):
+        self.user.fcm_registration_token = fcm_token
+        self.user.save()
 
     def find_users_by_phone_numbers(self, phone_numbers):
         users = (
@@ -273,6 +284,26 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                     receiver=user, room=room, message=message
                 )
                 notification.save()
+
+    def send_push_notifications_for_new_message(self, message):
+        room = Room.objects.get(id=self.room_id)
+        registration_tokens = [
+            user.fcm_registration_token
+            for user in room.members.all()
+            if not user.blocked_users.filter(id=self.user.id).exists()
+            and user.id != self.user.id
+        ]
+        notification = messaging.Notification(
+            title=message.room.display_name,
+            body=f"{message.creator.display_name} spoke",
+            image=None,
+        )
+        push_message = messaging.MulticastMessage(
+            tokens=registration_tokens,
+            notification=notification,
+            data={"message_id": message.id},
+        )
+        messaging.send_multicast(push_message)
 
     def get_room(self, phone_numbers):
         usernames_to_notify = []
@@ -480,6 +511,9 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 )
                 await database_sync_to_async(
                     self.create_message_notifications_for_new_message
+                )(message)
+                await database_sync_to_async(
+                    self.send_push_notifications_for_new_message
                 )(message)
                 await self.channel_layer.group_send(
                     self.room_id,
