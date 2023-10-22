@@ -291,16 +291,19 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             user.fcm_registration_token
             for user in room.members.all()
             if not user.blocked_users.filter(id=self.user.id).exists()
-            and user.id != self.user.id
         ]
         notification = messaging.Notification(
             title=message.room.display_name,
             body=f"{message.creator.display_name} spoke",
             image=None,
         )
+        android_config = messaging.AndroidConfig(
+            priority="high", notification=messaging.AndroidNotification(priority="max")
+        )
         push_message = messaging.MulticastMessage(
             tokens=registration_tokens,
             notification=notification,
+            android=android_config,
         )
         messaging.send_multicast(push_message)
 
